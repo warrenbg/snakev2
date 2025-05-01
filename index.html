@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snake Mobile</title>
+  <style>
+    :root {
+      --primary: #4caf50;
+      --secondary: #e0e0e0;
+      --danger: #f44336;
+      --text: #333;
+      --background: #ffffff;
+    }
+
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      color: var(--primary);
+    }
+
+    canvas {
+      border: 2px solid var(--primary);
+      background: var(--background);
+      touch-action: none;
+      border-radius: 10px;
+    }
+
+    input, select, button {
+      padding: 10px 14px;
+      font-size: 1rem;
+      margin: 6px;
+      border: 1px solid var(--secondary);
+      border-radius: 8px;
+      background: #f9f9f9;
+    }
+
+    button {
+      background-color: var(--primary);
+      color: white;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background-color: #43a047;
+    }
+
+    #controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    #startCountdown {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      padding: 20px 40px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 16px;
+      border: 2px solid var(--primary);
+      z-index: 100;
+      animation: pop 0.3s ease-out;
+    }
+
+    @keyframes pop {
+      from { transform: scale(0.8) translate(-50%, -50%); opacity: 0; }
+      to   { transform: scale(1) translate(-50%, -50%); opacity: 1; }
+    }
+
+    #gameOver {
+      margin-top: 15px;
+      display: none;
+      text-align: center;
+    }
+
+    #gameOver p {
+      font-size: 1.2rem;
+    }
+
+    #gameOver button {
+      background-color: var(--danger);
+    }
+
+    @media (max-width: 500px) {
+      canvas {
+        width: 95vw;
+        height: 95vw;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🐍 Snake Mobile</h1>
+
+  <div id="controls">
+    <input type="text" id="playerNameInput" placeholder="Nom du joueur" />
+    <select id="speedSelector">
+      <option value="200">Lent</option>
+      <option value="100" selected>Moyen</option>
+      <option value="50">Rapide</option>
+    </select>
+    <select id="themeSelector">
+      <option value="light">Clair</option>
+      <option value="night">Nuit</option>
+      <option value="desert">Désert</option>
+      <option value="neon">Néon</option>
+      <option value="retro">Rétro</option>
+      <option value="obstacles">Obstacles</option> <!-- Nouveau thème -->
+    </select>
+    <button id="startButton">Commencer</button>
+  </div>
+
+  <div id="startCountdown"><span id="countdownText">3</span></div>
+  <canvas id="snakeGame" width="400" height="400" style="display: none;"></canvas>
+
+  <div id="gameOver">
+    <p>💀 Game Over</p>
+    <p>Score : <span id="score"></span></p>
+    <button onclick="restartGame()">Rejouer</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("snakeGame");
+    const ctx = canvas.getContext("2d");
+    const scale = 20;
+    const rows = canvas.height / scale;
+    const columns = canvas.width / scale;
+
+    let snake, fruit, gameInterval;
+    let playerName = "";
+    let theme = "light"; // Par défaut
+    let obstacles = [];
+
+    const startButton = document.getElementById("startButton");
+    const playerNameInput = document.getElementById("playerNameInput");
+    const speedSelector = document.getElementById("speedSelector");
+    const themeSelector = document.getElementById("themeSelector");
+    const gameOverElement = document.getElementById("gameOver");
+    const scoreElement = document.getElementById("score");
+    const countdown = document.getElementById("startCountdown");
+    const countdownText = document.getElementById("countdownText");
+
+    startButton.onclick = () => {
+      const name = playerNameInput.value.trim();
+      if (!name) {
+        alert("Veuillez entrer un nom.");
+        return;
+      }
+      playerName = name;
+      theme = themeSelector.value; // Récupère le thème sélectionné
+
+      // Appliquer le thème
+      applyTheme(theme);
+
+      // ➕ Mode plein écran
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      else if (el.msRequestFullscreen) el.msRequestFullscreen();
+
+      startButton.style.display = "none";
+      playerNameInput.style.display = "none";
+      speedSelector.style.display = "none";
+      themeSelector.style.display = "none"; // Cacher le sélecteur de thème après démarrage
+      canvas.style.display = "block";
+      setup();
+    };
+
+    function applyTheme(theme) {
+      const root = document.documentElement.style;
+      switch (theme) {
+        case "light":
+          root.setProperty('--background', '#ffffff');
+          root.setProperty('--primary', '#4caf50');
+          root.setProperty('--text', '#333');
+          break;
+        case "night":
+          root.setProperty('--background', '#000000');
+          root.setProperty('--primary', '#00ffcc');
+          root.setProperty('--text', '#ffffff');
+          break;
+        case "desert":
+          root.setProperty('--background', '#fdf1c7');
+          root.setProperty('--primary', '#a67c52');
+          root.setProperty('--text', '#5c432e');
+          break;
+        case "neon":
+          root.setProperty('--background', '#1a1a1a');
+          root.setProperty('--primary', '#39ff14');
+          root.setProperty('--text', '#ffffff');
+          break;
+        case "retro":
+          root.setProperty('--background', '#c7f0d8');
+          root.setProperty('--primary', '#3a5f0b');
+          root.setProperty('--text', '#1a1a1a');
+          break;
+        case "obstacles": // Nouveau thème
+          root.setProperty('--background', '#e0e0e0');
+          root.setProperty('--primary', '#ff9800');
+          root.setProperty('--text', '#333');
+          break;
+      }
+    }
+
+    function setup() {
+      if (gameInterval) clearInterval(gameInterval);
+      snake = new Snake();
+      fruit = new Fruit();
+      obstacles = generateObstacles(); // Générer les obstacles
+      gameOverElement.style.display = "none";
+
+      let count = 3;
+      countdown.style.display = "block";
+      countdownText.textContent = count;
+
+      const speed = parseInt(speedSelector.value);
+
+      const countdownInterval = setInterval(() => {
+        count--;
+        if (count === 0) {
+          countdownText.textContent = "GO!";
+        } else if (count < 0) {
+          clearInterval(countdownInterval);
+          countdown.style.display = "none";
+          gameInterval = setInterval(gameLoop, speed);
+        } else {
+          countdownText.textContent = count;
+        }
+      }, 1000);
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      snake.update();
+      const head = snake.snakeArray[0];
+
+      if (snake.snakeArray.slice(1).some(s => s.x === head.x && s.y === head.y)) {
+        endGame();
+        return;
+      }
+
+      if (head.x < 0 || head.x >= columns || head.y < 0 || head.y >= rows) {
+        snake.teleport();
+      }
+
+      // Vérifier la collision avec les obstacles
+      if (obstacles.some(obs => obs.x === head.x && obs.y === head.y)) {
+        endGame();
+        return;
+      }
+
+      snake.draw();
+      fruit.draw();
+      obstacles.forEach(obs => drawObstacle(obs)); // Dessiner les obstacles
+
+      if (snake.eat(fruit)) {
+        fruit.randomize();
+        snake.grow();
+      }
+    }
+
+    function endGame() {
+      clearInterval(gameInterval);
+      scoreElement.textContent = snake.length - 1;
+      gameOverElement.style.display = "block";
+    }
+
+    function restartGame() {
+      location.reload();
+    }
+
+    function generateObstacles() {
+      const numObstacles = 5; // Nombre d'obstacles
+      const obstacles = [];
+      for (let i = 0; i < numObstacles; i++) {
+        const x = Math.floor(Math.random() * columns);
+        const y = Math.floor(Math.random() * rows);
+        obstacles.push({ x, y });
+      }
+      return obstacles;
+    }
+
+    function drawObstacle(obstacle) {
+      ctx.fillStyle = "#FF5722"; // Couleur des obstacles
+      ctx.fillRect(obstacle.x * scale, obstacle.y * scale, scale, scale);
+    }
+
+    function Snake() {
+      this.snakeArray = [{ x: 10, y: 10 }];
+      this.length = 1;
+      this.direction = 'right';
+
+      this.update = function () {
+        const head = { ...this.snakeArray[0] };
+        switch (this.direction) {
+          case "up": head.y -= 1; break;
+          case "down": head.y += 1; break;
+          case "left": head.x -= 1; break;
+          case "right": head.x += 1; break;
+        }
+        this.snakeArray.unshift(head);
+        if (this.snakeArray.length > this.length) {
+          this.snakeArray.pop();
+        }
+      };
+
+      this.draw = function () {
+        this.snakeArray.forEach((seg, i) => {
+          ctx.fillStyle = getSnakeColor(i);
+          ctx.fillRect(seg.x * scale, seg.y * scale, scale, scale);
+        });
+      };
+
+      this.changeDirection = function (dir) {
+        const opposite = { up: "down", down: "up", left: "right", right: "left" };
+        if (dir !== opposite[this.direction]) {
+          this.direction = dir;
+        }
+      };
+
+      this.eat = function (fruit) {
+        return this.snakeArray[0].x === fruit.x && this.snakeArray[0].y === fruit.y;
+      };
+
+      this.grow = function () {
+        this.length++;
+      };
+
+      this.teleport = function () {
+        const head = this.snakeArray[0];
+        if (head.x < 0) head.x = columns - 1;
+        else if (head.x >= columns) head.x = 0;
+        if (head.y < 0) head.y = rows - 1;
+        else if (head.y >= rows) head.y = 0;
+      };
+    }
+
+    function getSnakeColor(index) {
+      switch (theme) {
+        case "light": return "#4caf50"; // vert classique
+        case "night": return "#00ffcc"; // fluo
+        case "desert": return "#a67c52"; // marron
+        case "neon": return "#39ff14"; // vert néon
+        case "retro": return "#4caf50"; // vert style gameboy
+        case "obstacles": return "#ff9800"; // Orange pour obstacles
+      }
+    }
+
+    function Fruit() {
+      this.x = Math.floor(Math.random() * columns);
+      this.y = Math.floor(Math.random() * rows);
+
+      this.randomize = function () {
+        this.x = Math.floor(Math.random() * columns);
+        this.y = Math.floor(Math.random() * rows);
+      };
+
+      this.draw = function () {
+        ctx.fillStyle = getFruitColor();
+        ctx.fillRect(this.x * scale, this.y * scale, scale, scale);
+      };
+    }
+
+    function getFruitColor() {
+      switch (theme) {
+        case "light": return "#ff5722"; // rouge
+        case "night": return "#2196F3"; // bleu
+        case "desert": return "#FFEB3B"; // jaune sable
+        case "neon": return "#FF4081"; // rose néon
+        case "retro": return "#9e9e9e"; // gris
+        case "obstacles": return "#FFEB3B"; // Jaune pour fruit sur obstacles
+      }
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp") snake.changeDirection("up");
+      if (e.key === "ArrowDown") snake.changeDirection("down");
+      if (e.key === "ArrowLeft") snake.changeDirection("left");
+      if (e.key === "ArrowRight") snake.changeDirection("right");
+    });
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    canvas.addEventListener("touchstart", (e) => {
+      touchStartX = e.touches[0].pageX;
+      touchStartY = e.touches[0].pageY;
+    });
+
+    canvas.addEventListener("touchend", (e) => {
+      const touchEndX = e.changedTouches[0].pageX;
+      const touchEndY = e.changedTouches[0].pageY;
+
+      const diffX = touchEndX - touchStartX;
+      const diffY = touchEndY - touchStartY;
+
+      if (Math.abs(diffX) > Math.abs(diffY)) {
+        if (diffX > 0) snake.changeDirection("right");
+        else snake.changeDirection("left");
+      } else {
+        if (diffY > 0) snake.changeDirection("down");
+        else snake.changeDirection("up");
+      }
+    });
+  </script>
+
+</body>
+</html>
